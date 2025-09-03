@@ -19,18 +19,35 @@ class NotificationManager():
         self.__handleList.append(notificationHandle)
 
     def send(self) -> None:
-        res = query_status(self.__location, self.__number, self.__passport_number, self.__surname, self.__captchaHandle)
+        res = query_status(
+            self.__location,
+            self.__number,
+            self.__passport_number,
+            self.__surname,
+            self.__captchaHandle
+        )
         current_status = res['status']
+        current_last_updated = res.get('case_last_updated')
 
         # Load the previous statuses from the file
         statuses = self.__load_statuses()
 
-        # Check if the current status is different from the last recorded status
-        if not statuses or current_status != statuses[-1]['status']:
-            self.__save_current_status(current_status)
+        if not statuses:
+            # First run, always save and notify
+            self.__save_current_status(current_status, current_last_updated)
+            self.__send_notifications(res)
+            return
+
+        last_record = statuses[-1]
+        last_status = last_record.get('status')
+        last_updated = last_record.get('case_last_updated')
+
+        # Check if either status or last_updated has changed
+        if current_status != last_status or current_last_updated != last_updated:
+            self.__save_current_status(current_status, current_last_updated)
             self.__send_notifications(res)
         else:
-            print("Status unchanged. No notification sent.")
+            print("Status & last_updated unchanged. No notification sent.")
 
     def __load_statuses(self) -> list:
         if os.path.exists(self.__status_file):
@@ -38,9 +55,13 @@ class NotificationManager():
                 return json.load(file).get('statuses', [])
         return []
 
-    def __save_current_status(self, status: str) -> None:
+    def __save_current_status(self, status: str, case_last_updated: str) -> None:
         statuses = self.__load_statuses()
-        statuses.append({'status': status, 'date': datetime.now().isoformat()})
+        statuses.append({
+            'status': status,
+            'case_last_updated': case_last_updated,
+            'date': datetime.now().isoformat()
+        })
 
         with open(self.__status_file, 'w') as file:
             json.dump({'statuses': statuses}, file)
